@@ -1,0 +1,7 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="pc2mesh_cli/pc2mesh_cli.vcxproj" Id="c9dca08b-b717-4265-a58e-51e08fb105f6" />
+</Solution>
