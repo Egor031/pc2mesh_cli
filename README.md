@@ -17,3 +17,18 @@ contents and returns a nonzero exit code. A failed log publication rolls back an
 already published mesh where the filesystem permits it.
 
 See [file safety tests and limitations](tests/README.md).
+
+IGES point data is extracted directly: type 116 form 0 and type 106 forms 1/2/3
+(XY with common Z, XYZ, XYZ with vectors). All point occurrences are retained;
+vectors are not points. Explicit Cartesian transformations are applied once,
+including matrix chains, followed by conversion to millimeters. Coordinates stay
+in IGES model space; a non-unit global model-space scale is reported rather than
+converted to real-world coordinates.
+
+CAD-only files retain extraction of OCCT topological vertices, without sampling
+curves or surfaces. Mixing point data with CAD geometry is rejected. Unsupported
+entities/instance placements, damaged numeric data, model/transfer failures and
+non-finite coordinates fail the whole import before PLY publication. Presentation
+data such as colors, names and view clipping planes do not become cloud points;
+non-placement groups do not duplicate their members. See the
+[IGES import policy, tests and limits](tests/README.md#iges-import-pc2mesh-release-01b).
