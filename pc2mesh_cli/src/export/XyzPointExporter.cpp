@@ -1,25 +1,26 @@
 #include "XyzPointExporter.h"
 
-#include <fstream>
-#include <iomanip>
+#include "../Core/FileSafety.h"
 
-bool XyzPointExporter::Export(const PointCloud& cloud, const std::string& filePath) const
+#include <exception>
+#include <iostream>
+
+bool XyzPointExporter::Export(const PointCloud& cloud, const std::string& filePath,
+    const std::string& inputPath) const
 {
-    std::ofstream out(filePath);
-
-    if (!out.is_open())
+    try
     {
+        FileSafety::AtomicOutput out(filePath, inputPath);
+        for (const Point3D& point : cloud.Points())
+        {
+            out.Print("%.9f %.9f %.9f\n", point.x, point.y, point.z);
+        }
+        out.Publish();
+        return true;
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "XYZ export error: " << ex.what() << std::endl;
         return false;
     }
-
-    out << std::fixed << std::setprecision(9);
-
-    for (const Point3D& point : cloud.Points())
-    {
-        out << point.x << " "
-            << point.y << " "
-            << point.z << "\n";
-    }
-
-    return true;
 }

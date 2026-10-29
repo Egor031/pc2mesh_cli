@@ -140,12 +140,14 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="pc2mesh_cli.cpp" />
+    <ClCompile Include="src\Core\FileSafety.cpp" />
     <ClCompile Include="src\export\PlyPointExporter.cpp" />
     <ClCompile Include="src\export\XyzPointExporter.cpp" />
     <ClCompile Include="src\import\IgesPointImporter.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Core\Point3D.h" />
+    <ClInclude Include="src\Core\FileSafety.h" />
     <ClInclude Include="src\Core\PointCloud.h" />
     <ClInclude Include="src\export\PlyPointExporter.h" />
     <ClInclude Include="src\export\XyzPointExporter.h" />

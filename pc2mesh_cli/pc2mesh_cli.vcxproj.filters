@@ -27,6 +27,9 @@
     <ClCompile Include="pc2mesh_cli.cpp">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
+    <ClCompile Include="src\Core\FileSafety.cpp">
+      <Filter>Исходные файлы\Core</Filter>
+    </ClCompile>
     <ClCompile Include="src\export\XyzPointExporter.cpp">
       <Filter>Исходные файлы\Export</Filter>
     </ClCompile>
@@ -39,6 +42,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Core\Point3D.h">
+      <Filter>Исходные файлы\Core</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\FileSafety.h">
       <Filter>Исходные файлы\Core</Filter>
     </ClInclude>
     <ClInclude Include="src\Core\PointCloud.h">

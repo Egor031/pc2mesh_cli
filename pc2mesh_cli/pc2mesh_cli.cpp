@@ -1,6 +1,10 @@
 ﻿#include "src/import/IgesPointImporter.h"
 #include "src/export/PlyPointExporter.h"
+#include "src/Core/FileSafety.h"
 
+#include <Standard_Failure.hxx>
+
+#include <exception>
 #include <iostream>
 #include <string>
 
@@ -23,26 +27,41 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    IgesPointImporter importer;
-    PointCloud cloud = importer.Import(inputPath);
-
-    if (cloud.IsEmpty())
+    try
     {
-        std::cerr << "No points extracted." << std::endl;
-        return 1;
+        FileSafety::CheckDistinctPaths({inputPath, outputPath});
+        FileSafety::InputFileLock inputLock(inputPath);
+        inputLock.CheckPath();
+
+        IgesPointImporter importer;
+        PointCloud cloud = importer.Import(inputPath);
+        inputLock.CheckPath();
+
+        if (cloud.IsEmpty())
+        {
+            std::cerr << "No points extracted." << std::endl;
+            return 1;
+        }
+
+        PlyPointExporter exporter;
+        if (!exporter.Export(cloud, outputPath, inputPath))
+        {
+            std::cerr << "Failed to export PLY: " << outputPath << std::endl;
+            return 1;
+        }
+
+        std::cout << "Done." << std::endl;
+        std::cout << "Output: " << outputPath << std::endl;
+        std::cout << "Points: " << cloud.Size() << std::endl;
+        return 0;
     }
-
-    PlyPointExporter exporter;
-
-    if (!exporter.Export(cloud, outputPath))
+    catch (const Standard_Failure& ex)
     {
-        std::cerr << "Failed to export PLY: " << outputPath << std::endl;
-        return 1;
+        std::cerr << "ERROR: " << ex.GetMessageString() << std::endl;
     }
-
-    std::cout << "Done." << std::endl;
-    std::cout << "Output: " << outputPath << std::endl;
-    std::cout << "Points: " << cloud.Size() << std::endl;
-
-    return 0;
+    catch (const std::exception& ex)
+    {
+        std::cerr << "ERROR: " << ex.what() << std::endl;
+    }
+    return 1;
 }

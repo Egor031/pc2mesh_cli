@@ -1,35 +1,32 @@
 #include "PlyPointExporter.h"
 
-#include <fstream>
-#include <iomanip>
+#include "../Core/FileSafety.h"
 
-bool PlyPointExporter::Export(const PointCloud& cloud, const std::string& filePath) const
+#include <exception>
+#include <iostream>
+
+bool PlyPointExporter::Export(const PointCloud& cloud, const std::string& filePath,
+    const std::string& inputPath) const
 {
-    std::ofstream out(filePath);
-
-    if (!out.is_open())
+    try
     {
+        FileSafety::AtomicOutput out(filePath, inputPath);
+        const auto& points = cloud.Points();
+
+        out.Print("ply\nformat ascii 1.0\nelement vertex %zu\n", points.size());
+        out.Print("property double x\nproperty double y\nproperty double z\nend_header\n");
+
+        for (const Point3D& point : points)
+        {
+            out.Print("%.9f %.9f %.9f\n", point.x, point.y, point.z);
+        }
+
+        out.Publish();
+        return true;
+    }
+    catch (const std::exception& ex)
+    {
+        std::cerr << "PLY export error: " << ex.what() << std::endl;
         return false;
     }
-
-    const auto& points = cloud.Points();
-
-    out << "ply\n";
-    out << "format ascii 1.0\n";
-    out << "element vertex " << points.size() << "\n";
-    out << "property double x\n";
-    out << "property double y\n";
-    out << "property double z\n";
-    out << "end_header\n";
-
-    out << std::fixed << std::setprecision(9);
-
-    for (const Point3D& point : points)
-    {
-        out << point.x << " "
-            << point.y << " "
-            << point.z << "\n";
-    }
-
-    return true;
 }
