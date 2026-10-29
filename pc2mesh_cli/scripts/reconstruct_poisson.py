@@ -8,29 +8,48 @@ import numpy as np
 import open3d as o3d
 
 from file_safety import AtomicOutput, InputFileLock, ensure_distinct_paths, publish_outputs
+from ply_validation import validate_ply
 
 
 def write_obj(stream, mesh, object_name):
-    # Preserve the current Open3D OBJ layout/precision; precision is a separate change.
-    stream.write("# Created by Open3D \n")
-    stream.write(f"# object name: {object_name}\n")
-    stream.write(f"# number of vertices: {len(mesh.vertices)}\n")
-    stream.write(f"# number of triangles: {len(mesh.triangles)}\n")
+    vertices = np.asarray(mesh.vertices)
+    triangles = np.asarray(mesh.triangles)
     normals = np.asarray(mesh.vertex_normals)
     colors = np.asarray(mesh.vertex_colors)
+    if len(vertices) == 0 or len(triangles) == 0:
+        raise ValueError("Cannot write an empty triangle mesh.")
+    for name, values in (("vertices", vertices), ("normals", normals), ("colors", colors)):
+        if name != "vertices" and len(values) not in (0, len(vertices)):
+            raise ValueError(f"OBJ {name} count does not match vertices.")
+        for start in range(0, len(values), 65536):
+            if not np.isfinite(values[start:start + 65536]).all():
+                raise ValueError(f"OBJ {name} contain non-finite values.")
+    for start in range(0, len(triangles), 65536):
+        block = triangles[start:start + 65536]
+        if block.min() < 0 or block.max() >= len(vertices):
+            raise ValueError("OBJ triangle index outside vertex array.")
+
+    def put(text):
+        if stream.write(text) != len(text):
+            raise OSError("Short OBJ text write.")
+
+    put("# Created by Open3D \n")
+    put(f"# object name: {object_name}\n")
+    put(f"# number of vertices: {len(vertices)}\n")
+    put(f"# number of triangles: {len(triangles)}\n")
     has_normals = mesh.has_vertex_normals()
     has_colors = mesh.has_vertex_colors()
-    for index, vertex in enumerate(np.asarray(mesh.vertices)):
+    for index, vertex in enumerate(vertices):
         values = list(vertex)
         if has_colors:
             values.extend(colors[index])
-        stream.write("v " + " ".join(format(float(value), ".6g") for value in values) + "\n")
+        put("v " + " ".join(format(float(value), ".17g") for value in values) + "\n")
         if has_normals:
-            stream.write("vn " + " ".join(format(float(value), ".6g") for value in normals[index]) + "\n")
-    for triangle in np.asarray(mesh.triangles):
+            put("vn " + " ".join(format(float(value), ".17g") for value in normals[index]) + "\n")
+    for triangle in triangles:
         indices = [int(index) + 1 for index in triangle]
         face = [f"{index}//{index}" if has_normals else str(index) for index in indices]
-        stream.write("f " + " ".join(face) + "\n")
+        put("f " + " ".join(face) + "\n")
 
 
 def log_write(log_file, text):
@@ -104,11 +123,16 @@ def main():
         input_lock = files.enter_context(InputFileLock(input_path))
         input_lock.check()
         log_write(log_file, "Reading point cloud...")
-        cloud = o3d.io.read_point_cloud(str(input_path))
+        expected_points = validate_ply(input_lock.file)
+        input_lock.check()
+        cloud = o3d.io.read_point_cloud(str(input_path), format="ply")
         input_lock.check()
 
-        if cloud.is_empty():
-            raise RuntimeError("Point cloud is empty or could not be read.")
+        if cloud.is_empty() or len(cloud.points) != expected_points:
+            raise RuntimeError("Open3D did not read the complete declared PLY vertex array.")
+        for start in range(0, len(cloud.points), 65536):
+            if not np.isfinite(np.asarray(cloud.points)[start:start + 65536]).all():
+                raise RuntimeError("Open3D returned non-finite PLY coordinates.")
 
         log_write(log_file, f"Raw points: {len(cloud.points)}")
 

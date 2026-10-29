@@ -1,4 +1,4 @@
-# Regression tests (PC2MESH-RELEASE-01A / 01B)
+# Regression tests (PC2MESH-RELEASE-01A / 01B / 01C)
 
 The tests use `unittest`, the application's existing NumPy/Open3D environment,
 and a small C++ driver. They create their own temporary files; user IGES/PLY/OBJ
@@ -50,8 +50,8 @@ test directory and restore the ACL in `finally`.
 - Repeated successful replacement, sibling temporary-file cleanup, spaces and
   another working directory; standalone CLI exit codes and diagnostics.
 - An IGES fixture with five known points and real Poisson reconstruction of a
-  generated sphere; byte-for-byte OBJ serialization comparison with Open3D 0.19
-  for the attributes produced by reconstruction, retaining six significant digits.
+  generated sphere; exact binary64 OBJ round trips of vertices/normals/colors,
+  retaining the previous header, record order, face indices and normal references.
 - Rollback after log publication failure; recoverable backup retention if
   rollback itself is blocked; warning if an unused backup cannot be removed.
 
@@ -87,8 +87,8 @@ crash can leave staging/backup files or a mesh/log from different runs. Flush an
 write-through are not a promise of power-loss atomicity or durability.
 
 Real disk exhaustion, power loss, hostile races, and filesystems other than the
-tested local Windows filesystem require separate verification. PLY input
-validation, OBJ precision and density/crop are outside stage 01B.
+tested local Windows filesystem require separate verification. Density/crop and
+other reconstruction geometry defects remain outside stage 01C.
 
 ## IGES import (PC2MESH-RELEASE-01B)
 
@@ -162,3 +162,83 @@ points, not just the count. The user file is only read and its hash is checked.
 Tests establish the listed examples on the installed Windows/OCCT toolchain.
 They do not establish arbitrary-file resource bounds, exhaustive malformed-IGES
 resilience, support for other OCCT versions or a portable Windows distribution.
+
+## PLY and OBJ (PC2MESH-RELEASE-01C)
+
+```powershell
+& "$repo\pc2mesh_cli\scripts\.venv\Scripts\python.exe" -B -m unittest discover -s "$repo\tests" -p test_ply_obj.py -v
+```
+
+`ply_validation.py` validates the locked input stream before native Open3D
+allocation. This is necessary because the Open3D 0.19 Python reader returns a
+nonempty, preallocated cloud even after its native reader reports failure. One
+streaming validation pass and one native decoding pass are used; a second cloud
+or whole-file body copy is not kept in memory. Counts are checked against the
+available body before native allocation. Post-read count/finiteness checks remain.
+
+Supported input is PLY 1.0 ASCII, binary little endian and binary big endian,
+with LF, CRLF or CR headers. The eight standard scalar types and their
+`int8`/`uint8`/`int16`/`uint16`/`int32`/`uint32`/`float32`/`float64` aliases are
+supported. Properties follow the header's order. Additional scalar/list
+properties and elements are validated and discarded if Open3D does not use them.
+List counts must be integral, nonnegative and complete. Standard face vertex
+indices must refer to existing vertices. ASCII elements occupy one nonempty
+line each; missing/extra values and undeclared trailing data fail. Binary
+records must contain exactly their declared data. Header comments/`obj_info`
+are allowed; comment contents may include UTF-8.
+
+Vertex positions require scalar `x`, `y`, `z`. Optional normal/color groups
+must be complete scalar triples. Open3D 0.19 advances its destination row on
+`z`, `nz` or `blue`, so those properties must follow the other two members of
+their group. For example, `y,x,z` works; `z,x,y` is explicitly rejected before
+calling the unsafe native callback. Duplicate declarations, unknown types,
+non-finite values, invalid integers, declared-type overflow/underflow and
+incomplete data are rejected, including in ignored elements.
+
+Validation buffers are bounded independently of vertex/list counts. Headers
+are limited to 1 MiB, header lines to 64 KiB, ASCII numeric tokens to 256 bytes
+and element counts to signed 32-bit range (the native Windows reader uses
+`long`). Lists and arbitrarily long ASCII records use 64 KiB buffers. Binary
+scalar batches target 64 KiB; a single wider record is bounded by its header.
+These are explicit validation limits, not a bound
+on Open3D/Poisson's total processing memory for a genuinely large valid cloud.
+Non-PLY formats, other PLY versions/types and the unsupported property layouts
+above return a clear error. No format/dependency was added.
+
+The existing checked OBJ writer now formats positions, vertex normals and colors
+with locale-independent `.17g`. Source binary64 bits are recovered by an
+independent Python OBJ reader, including close values, signed zero and extreme
+finite magnitudes. Indices are checked before writing; partial attribute arrays,
+non-finite attributes, empty meshes and short writes fail. Existing repeated
+indices/degenerate faces are retained; serialization does not repair geometry.
+The 01A staging/flush/sync/close/publication and rollback implementation is reused.
+The former six-digit byte-comparison test now checks exact binary64 values plus
+the previous header, statement order and face/reference syntax, because numeric
+text intentionally changes in 01C.
+
+`test_ply_obj.py` checks the 1205/1200 truncation case, ASCII/binary schemas,
+extra elements/lists, corrupt data and preservation of old OBJ/input SHA-256.
+Malformed inputs must be rejected before native reading. The real CLI is also
+tested. A million-vertex binary preflight is measured with `tracemalloc` to
+guard against whole-cloud validation allocations. Existing 01A filesystem-fault
+tests exercise the precise writer through the same production publication path.
+
+Geometry tests compare the mesh immediately before serialization with the
+independently decoded OBJ: coordinate/normal bits, faces, unique vertices and
+zero-area triangles. They include a known radius-1 sphere centered at
+`(1000,2000,3000)`, a complete synthetic IGES -> PLY -> Poisson -> OBJ run near
+the origin, and the optional real `det4.igs` pipeline. User files are read-only.
+Set `PC2MESH_GEOMETRY_REPORT` to a disposable JSON path to retain metrics. To
+compare the *same* mesh against the previous six-digit writer, optionally set
+`PC2MESH_BASELINE_SCRIPT` to a saved, trusted 01B `reconstruct_poisson.py`.
+Neither option changes reconstruction parameters or production behavior.
+
+The installed Open3D OBJ reader can quantize coordinates and reorder/merge
+vertices independently of the file's precision. It is recorded separately from
+the independent binary64 oracle; exact OBJ text does not promise lossless import
+in that reader or other consumers. Also, the original reconstruction of an ideal
+cospherical cloud at a large offset can fail in Qhull during normal orientation.
+That pre-serialization failure is outside 01C; its algorithm is unchanged. The
+known offset sphere mesh isolates serialization from that limitation. No claim
+of repaired self-intersections, density/crop behavior or portable compatibility
+is made by these tests.

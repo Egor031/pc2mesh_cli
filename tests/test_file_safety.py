@@ -23,6 +23,7 @@ SCRIPTS = REPO / "pc2mesh_cli" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import file_safety as fs
 import reconstruct_poisson as app
+from obj_oracle import assert_exact, read_obj
 
 
 def digest(path):
@@ -513,14 +514,27 @@ class ReconstructionTests(TemporaryFiles):
         self.unchanged(self.source, self.output, self.log)
         self.no_temporary_files()
 
-    def test_obj_payload_preserves_existing_precision_and_attributes(self):
+    def test_obj_payload_preserves_double_precision_and_attributes(self):
         self.mesh.compute_vertex_normals()
         self.mesh.paint_uniform_color([0.1, 0.2, 0.3])
         baseline = self.root / "baseline.obj"
         self.assertTrue(o3d.io.write_triangle_mesh(str(baseline), self.mesh, write_ascii=True))
         buffer = io.StringIO()
         app.write_obj(buffer, self.mesh, baseline.stem)
-        self.assertEqual(buffer.getvalue().encode("utf-8"), baseline.read_bytes())
+        actual = read_obj(buffer.getvalue())
+        for name, values in (("vertices", self.mesh.vertices), ("normals", self.mesh.vertex_normals),
+                             ("colors", self.mesh.vertex_colors)):
+            assert_exact(self, np.asarray(values), actual[name])
+        np.testing.assert_array_equal(np.asarray(self.mesh.triangles), actual["triangles"])
+        np.testing.assert_array_equal(actual["triangles"], actual["normal_indices"])
+        # Precision changes intentionally; retain the previous header, record
+        # order and face syntax rather than comparing six-digit numeric bytes.
+        native = baseline.read_text().splitlines()
+        precise = buffer.getvalue().splitlines()
+        self.assertEqual(native[:4], precise[:4])
+        self.assertEqual([line.split()[0] for line in native], [line.split()[0] for line in precise])
+        self.assertEqual([line for line in native if line.startswith("f ")],
+                         [line for line in precise if line.startswith("f ")])
 
     def test_real_poisson_success_replacement_spaces_and_other_cwd(self):
         space = self.root / "space folder"
